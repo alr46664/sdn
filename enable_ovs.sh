@@ -8,7 +8,7 @@ PROTOCOLS='OpenFlow10,OpenFlow13'
 CONTROLLER="tcp:$CTRL_IP:6633"
 
 # Nome e MAC da bridge
-BRIDGE_IFACE=$INTERFACE_DEFAULT
+BRIDGE_IFACE=$INTERFACE_OVS
 BRIDGE_ADDR='00:00:aa:bb:cc:dd'
 
 # configure a bridge e os protocolos do OpenFlow
@@ -26,6 +26,9 @@ ovs-vsctl set-controller "$BRIDGE_IFACE" "$CONTROLLER"
 # nosso controller esta fora da rede gerenciada pelo openvswitch
 ovs-vsctl set controller "$BRIDGE_IFACE" connection-mode=out-of-band
 ovs-vsctl set bridge "$BRIDGE_IFACE" other-config:disable-in-band=true
+# defina a rede do OpenVSwitch
+ovs-vsctl set controller "$BRIDGE_IFACE" local_ip=$NET_IPADDR
+ovs-vsctl set controller "$BRIDGE_IFACE" local_netmask=$NET_NETMASK
 
 # adicione as portas a bridge
 ovs-vsctl add-port "$BRIDGE_IFACE" eth0.1

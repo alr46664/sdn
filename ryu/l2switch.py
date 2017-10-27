@@ -1,4 +1,4 @@
-#!/usr/local/bin/ryu-manager
+#!/usr/bin/ryu-manager
 
 # pacote do APP principal Ryu
 from ryu.base import app_manager

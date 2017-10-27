@@ -3,10 +3,7 @@
 # load das variables
 . ./variables.sh
 
-INTERFACE=$INTERFACE_DEFAULT
-
-# limite de pacotes
-PKT_LIMIT=15
+INTERFACE=$INTERFACE_OVS
 
 # options
 OPTION_LIST=-l
@@ -41,6 +38,7 @@ case $OPTION in
       fi
       echo -e '\n\tCAPTURA INICIADA - Pression CTRL + C para TERMINAR\n'
       ssh "$ROUTER_SSH" tcpdump -w "$DUMP_FILE" -i "$INTERFACE"
+      cd "$LOGS_PATH" &&
       sftp -b <( echo "get $DUMP_FILE" ) "$ROUTER_SSH":/root &&
       ssh "$ROUTER_SSH" rm "$DUMP_FILE"
       ;;

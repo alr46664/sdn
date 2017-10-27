@@ -14,9 +14,8 @@ OPTION_WIRESHARK='-w'
 OPTION_FIREFOX='-f'
 OPTION_TERMINAL='-t'
 OPTION_LIST_DEV='-l'
+OPTION_IDENTIFY='-i'
 
-# arquivo de configuracao dos network namespaces
-CONF="netns.conf"
 
 OPTION=$(echo $1 | xargs)
 shift
@@ -37,6 +36,8 @@ display_help(){
     echo -e "$OPTION_WIRESHARK"'\topen wireshark'
     echo -e "$OPTION_FIREFOX"'\topen firefox'
     echo -e "$OPTION_TERMINAL"'\topen terminal'
+    echo -e "$OPTION_LIST_DEV"'\tlist devices in the current netns'
+    echo -e "$OPTION_IDENTIFY"'\tidentify current netns'
     echo -e '-h\topen help'
     echo -e '\n'
     exit 0
@@ -138,6 +139,12 @@ case $OPTION in
         ;;
     $OPTION_LIST_DEV)
         sudo ip link list | grep -v lo
+        ;;
+    $OPTION_IDENTIFY)
+        echo -en '\n\tNetwork Namespace:  '
+        sudo ip netns identify
+        echo ' '
+        sudo ifconfig
         ;;
     *)
         display_help

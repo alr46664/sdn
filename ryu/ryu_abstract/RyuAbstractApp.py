@@ -1,4 +1,4 @@
-#!/usr/local/bin/ryu-manager
+#!/usr/bin/ryu-manager
 
 # classe abstract
 import abc
