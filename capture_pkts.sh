@@ -1,13 +1,12 @@
 #!/bin/bash
 
-INTERFACE=br-lan-ovs
+# load das variables
+. ./variables.sh
+
+INTERFACE=$INTERFACE_DEFAULT
 
 # limite de pacotes
 PKT_LIMIT=15
-
-# configuracoes do roteador
-SSH_CONFIG=root@192.168.6.1
-SFTP_CONFIG=$SSH_CONFIG:/root
 
 # options
 OPTION_LIST=-l
@@ -33,7 +32,7 @@ display_help(){
 
 case $OPTION in
    $OPTION_LIST)
-      ssh "$SSH_CONFIG" tcpdump -D
+      ssh "$ROUTER_SSH" tcpdump -D
       ;;
    $OPTION_CAPTURE)
       if [ -n "$1" ]; then
@@ -41,9 +40,9 @@ case $OPTION in
         shift
       fi
       echo -e '\n\tCAPTURA INICIADA - Pression CTRL + C para TERMINAR\n'
-      ssh "$SSH_CONFIG" tcpdump -w "$DUMP_FILE" -i "$INTERFACE"
-      sftp -b <( echo "get $DUMP_FILE" ) "$SFTP_CONFIG" &&
-      ssh "$SSH_CONFIG" rm "$DUMP_FILE"
+      ssh "$ROUTER_SSH" tcpdump -w "$DUMP_FILE" -i "$INTERFACE"
+      sftp -b <( echo "get $DUMP_FILE" ) "$ROUTER_SSH":/root &&
+      ssh "$ROUTER_SSH" rm "$DUMP_FILE"
       ;;
    *)
      display_help

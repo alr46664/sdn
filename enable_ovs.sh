@@ -1,11 +1,14 @@
 #!/bin/bash
 
+# load variables
+. ./variables.sh
+
 # protocolos suportados e controller
 PROTOCOLS='OpenFlow10,OpenFlow13'
-CONTROLLER='tcp:192.168.6.254:6633'
+CONTROLLER="tcp:$CTRL_IP:6633"
 
 # Nome e MAC da bridge
-BRIDGE_IFACE='br-lan-ovs'
+BRIDGE_IFACE=$INTERFACE_DEFAULT
 BRIDGE_ADDR='00:00:aa:bb:cc:dd'
 
 # configure a bridge e os protocolos do OpenFlow
