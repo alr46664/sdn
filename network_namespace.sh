@@ -13,6 +13,7 @@ OPTION_DEL='-d'
 OPTION_WIRESHARK='-w'
 OPTION_FIREFOX='-f'
 OPTION_TERMINAL='-t'
+OPTION_LIST_DEV='-l'
 
 # arquivo de configuracao dos network namespaces
 CONF="netns.conf"
@@ -66,7 +67,7 @@ check_devices(){
         DEVICE=$1
         IP_CIDR=$2
         shift; shift
-        if !(ip link list | grep "$DEVICE") || [ -z "$DEVICE" ]; then
+        if [ -z "$DEVICE" ] || !(ip link list | grep "$DEVICE"); then
             echo -e "\n\tERROR: \"$DEVICE\" DEVICE DOES NOT EXIST\n"
             exit $ERR_DEVICE_NOT_EXIST
         fi
@@ -129,7 +130,14 @@ case $OPTION in
     $OPTION_TERMINAL)
         check_netns
         # sudo ip netns exec "$NAMESPACE" bash -c 'export PS1='"$NAMESPACE"'_ns\ \$\  ; bash'
-        sudo ip netns exec "$NAMESPACE" bash
+        if [ $# -eq 0 ]; then
+            sudo ip netns exec "$NAMESPACE" bash
+        else
+            sudo ip netns exec "$NAMESPACE" $@
+        fi
+        ;;
+    $OPTION_LIST_DEV)
+        sudo ip link list | grep -v lo
         ;;
     *)
         display_help

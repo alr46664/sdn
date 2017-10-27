@@ -48,6 +48,8 @@ class L2Switch(RyuAbstractApp):
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
+        print("packet in:  src: %s  dst: %s" % (eth.src,eth.dst) )
+
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[eth.src] = msg.in_port
 
