@@ -2,6 +2,7 @@
 *.sublime-project
 *.sublime-workspace
 
+*.pyc
 
 .Xauthority
 .bash_history
@@ -24,3 +25,4 @@ oftest/
 openflow/
 pox/
 
+logs/

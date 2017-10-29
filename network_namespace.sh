@@ -13,9 +13,9 @@ OPTION_DEL='-d'
 OPTION_WIRESHARK='-w'
 OPTION_FIREFOX='-f'
 OPTION_TERMINAL='-t'
+OPTION_LIST_DEV='-l'
+OPTION_IDENTIFY='-i'
 
-# arquivo de configuracao dos network namespaces
-CONF="netns.conf"
 
 OPTION=$(echo $1 | xargs)
 shift
@@ -36,6 +36,8 @@ display_help(){
     echo -e "$OPTION_WIRESHARK"'\topen wireshark'
     echo -e "$OPTION_FIREFOX"'\topen firefox'
     echo -e "$OPTION_TERMINAL"'\topen terminal'
+    echo -e "$OPTION_LIST_DEV"'\tlist devices in the current netns'
+    echo -e "$OPTION_IDENTIFY"'\tidentify current netns'
     echo -e '-h\topen help'
     echo -e '\n'
     exit 0
@@ -66,7 +68,7 @@ check_devices(){
         DEVICE=$1
         IP_CIDR=$2
         shift; shift
-        if !(ip link list | grep "$DEVICE") || [ -z "$DEVICE" ]; then
+        if [ -z "$DEVICE" ] || !(ip link list | grep "$DEVICE"); then
             echo -e "\n\tERROR: \"$DEVICE\" DEVICE DOES NOT EXIST\n"
             exit $ERR_DEVICE_NOT_EXIST
         fi
@@ -129,7 +131,20 @@ case $OPTION in
     $OPTION_TERMINAL)
         check_netns
         # sudo ip netns exec "$NAMESPACE" bash -c 'export PS1='"$NAMESPACE"'_ns\ \$\  ; bash'
-        sudo ip netns exec "$NAMESPACE" bash
+        if [ $# -eq 0 ]; then
+            sudo ip netns exec "$NAMESPACE" bash
+        else
+            sudo ip netns exec "$NAMESPACE" $@
+        fi
+        ;;
+    $OPTION_LIST_DEV)
+        sudo ip link list | grep -v lo
+        ;;
+    $OPTION_IDENTIFY)
+        echo -en '\n\tNetwork Namespace:  '
+        sudo ip netns identify
+        echo ' '
+        sudo ifconfig
         ;;
     *)
         display_help

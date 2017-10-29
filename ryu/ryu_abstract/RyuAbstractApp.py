@@ -1,4 +1,4 @@
-#!/usr/local/bin/ryu-manager
+#!/usr/bin/ryu-manager
 
 # classe abstract
 import abc
@@ -261,5 +261,5 @@ class RyuAbstractApp(app_manager.RyuApp):
             datapath=dp, match=match, cookie=0,
             command=ofp.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
             priority=ofp.OFP_DEFAULT_PRIORITY,
-            flags=ofp.OFPFF_SEND_FLOW_REM, actions=actions)
+            actions=actions)
         dp.send_msg(mod)
