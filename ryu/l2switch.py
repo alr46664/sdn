@@ -40,7 +40,14 @@ class L2Switch(RyuAbstractApp):
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
 
+        # aparentemente este campo foi desativado e causa problemas no OpenFlow
+        # desativando com FFFFF
+        # buffer_id = msg.buffer_id if msg.buffer_id != 0xffffffff else None
+        buffer_id = 0xffffffff
+
         data = msg.data
+
+        in_port = msg.in_port
         out_port = ofp.OFPP_FLOOD
 
         # BEGIN - modificacoes do switch em relacao ao hub
@@ -66,7 +73,7 @@ class L2Switch(RyuAbstractApp):
         # END - modificacoes do switch em relacao ao hub
 
         out = ofp_parser.OFPPacketOut(
-            datapath=dp, buffer_id=msg.buffer_id, in_port=msg.in_port,
+            datapath=dp, buffer_id=buffer_id, in_port=in_port,
             actions=actions, data=data)
         dp.send_msg(out)
 
@@ -78,11 +85,15 @@ class L2Switch(RyuAbstractApp):
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
 
+        # buffer_id = msg.buffer_id
+        buffer_id = 0xffffffff
         data = msg.data
+
+        in_port = msg.in_port
         out_port = ofp.OFPP_FLOOD
 
         actions = [ofp_parser.OFPActionOutput(out_port)]
         out = ofp_parser.OFPPacketOut(
-            datapath=dp, buffer_id=msg.buffer_id, in_port=msg.in_port,
+            datapath=dp, buffer_id=buffer_id, in_port=in_port,
             actions=actions, data=data)
         dp.send_msg(out)
