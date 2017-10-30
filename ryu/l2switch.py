@@ -11,10 +11,16 @@ from ryu.ofproto import ofproto_v1_0, ofproto_v1_2, ofproto_v1_3, ofproto_v1_4, 
 from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
+from ryu.lib.packet import arp
+from ryu.lib.packet import icmp
 from ryu.lib.packet import ether_types
 
+# imports do usuario
+from ryu_abstract import Flow
+from ryu_abstract import Packet
 
 class L2Switch(app_manager.RyuApp):
+
     # versoes do OpenFlow suportadas pelo Controller
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
@@ -25,38 +31,38 @@ class L2Switch(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
-        # faca o ctrl funcionar como learning switch
-        self.switch(ev)
-        # por enquanto, faca o ctrl funcionar como hub
-        # self.hub(ev)
-
-    # esta funcao serve de handler para o packet in caso desejemos que nosso
-    # controller funcione como um learning switch
-    def switch(self, ev):
         msg = ev.msg
         dp = msg.datapath
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
 
-        # aparentemente este campo foi desativado e causa problemas no OpenFlow
-        # desativando com FFFFF
-        # buffer_id = msg.buffer_id if msg.buffer_id != 0xffffffff else None
-        buffer_id = 0xffffffff
-
+        # leia a mensagem do packet_in
+        buffer_id = msg.buffer_id
+        total_len = msg.total_len
+        in_port = msg.in_port
+        reason = msg.reason
         data = msg.data
 
-        in_port = msg.in_port
+        if reason == ofp.OFPR_NO_MATCH:
+            reason_txt = 'NO MATCH'
+        elif reason == ofp.OFPR_ACTION:
+            reason_txt = 'ACTION'
+        elif reason == ofp.OFPR_INVALID_TTL:
+            reason_txt = 'INVALID TTL'
+        else:
+            reason_txt = 'unknown'
+
         out_port = ofp.OFPP_FLOOD
 
         # BEGIN - modificacoes do switch em relacao ao hub
 
-        pkt = packet.Packet(msg.data)
+        pkt = packet.Packet(data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
-        print("packet in:  src: %s  dst: %s" % (eth.src,eth.dst) )
+        print("   PKT IN (EVENT)\n\tID:  %s - Reason:  %s\n\tPkt:  %s\n" % (buffer_id, reason_txt, pkt) )
 
         # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port[eth.src] = msg.in_port
+        self.mac_to_port[eth.src] = in_port
 
         if eth.dst in self.mac_to_port:
             # set the proper out port to avoid flooding
@@ -65,35 +71,13 @@ class L2Switch(app_manager.RyuApp):
         # define the aciton the switch will take
         actions = [ofp_parser.OFPActionOutput(out_port)]
 
-        # install a flow to avoid packet_in next time
         if out_port != ofp.OFPP_FLOOD:
+            # install a flow to avoid packet_in next time
+            print("   add flow  -  dst:  %s  - out:  %s\n" % (eth.dst, out_port) )
             match = ofp_parser.OFPMatch(dl_dst=haddr_to_bin(eth.dst))
-            self.add_flow(dp, match, actions)
+            flow = Flow(dp, match, actions )
+            flow.add()
 
         # END - modificacoes do switch em relacao ao hub
 
-        out = ofp_parser.OFPPacketOut(
-            datapath=dp, buffer_id=buffer_id, in_port=in_port,
-            actions=actions, data=data)
-        dp.send_msg(out)
-
-    # esta funcao serve de handler para o packet in caso desejemos que nosso
-    # controller funcione como um hub
-    def hub(self, ev):
-        msg = ev.msg
-        dp = msg.datapath
-        ofp = dp.ofproto
-        ofp_parser = dp.ofproto_parser
-
-        # buffer_id = msg.buffer_id
-        buffer_id = 0xffffffff
-        data = msg.data
-
-        in_port = msg.in_port
-        out_port = ofp.OFPP_FLOOD
-
-        actions = [ofp_parser.OFPActionOutput(out_port)]
-        out = ofp_parser.OFPPacketOut(
-            datapath=dp, buffer_id=buffer_id, in_port=in_port,
-            actions=actions, data=data)
-        dp.send_msg(out)
+        Packet.send(dp=dp, in_port=in_port, actions=actions, data=data)

@@ -2,7 +2,7 @@
 *.sublime-project
 *.sublime-workspace
 
-*.pyc
+**/*.py[cod]
 
 .Xauthority
 .bash_history
