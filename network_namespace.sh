@@ -14,6 +14,7 @@ OPTION_WIRESHARK='-w'
 OPTION_FIREFOX='-f'
 OPTION_TERMINAL='-t'
 OPTION_LIST_DEV='-l'
+OPTION_LIST_NETNS='-ln'
 OPTION_IDENTIFY='-i'
 
 
@@ -37,6 +38,7 @@ display_help(){
     echo -e "$OPTION_FIREFOX"'\topen firefox'
     echo -e "$OPTION_TERMINAL"'\topen terminal'
     echo -e "$OPTION_LIST_DEV"'\tlist devices in the current netns'
+    echo -e "$OPTION_LIST_NETNS"'\tlist netns defined'
     echo -e "$OPTION_IDENTIFY"'\tidentify current netns'
     echo -e '-h\topen help'
     echo -e '\n'
@@ -68,7 +70,7 @@ check_devices(){
         DEVICE=$1
         IP_CIDR=$2
         shift; shift
-        if [ -z "$DEVICE" ] || !(ip link list | grep "$DEVICE"); then
+        if [ -z "$DEVICE" ] || !(ip link list | grep "$DEVICE") &> /dev/null; then
             echo -e "\n\tERROR: \"$DEVICE\" DEVICE DOES NOT EXIST\n"
             exit $ERR_DEVICE_NOT_EXIST
         fi
@@ -105,8 +107,8 @@ add_netns(){
     done
     # teste pra ver se os devices estao no namespace
     sudo ip netns exec "$NAMESPACE" ip netns identify
-    sudo ip netns exec "$NAMESPACE" ip link list
-    echo -e "\tNamespace \"$NAMESPACE\" created SUCESSFULLY - Devices: \"$DEVICES_ADD\" - ADDED\n"
+    sudo ip netns exec "$NAMESPACE" ip link list | grep -v 'lo:' | grep -v 'loopback'
+    echo -e "\n\tNamespace \"$NAMESPACE\" created SUCESSFULLY - Devices: \"$DEVICES_ADD\" - ADDED\n"
 }
 
 
@@ -145,6 +147,11 @@ case $OPTION in
         sudo ip netns identify
         echo ' '
         sudo ifconfig
+        ;;
+    $OPTION_LIST_NETNS)
+        echo -e '\n\tNetwork Namespaces:  '
+        sudo ip netns list
+        echo ' '
         ;;
     *)
         display_help

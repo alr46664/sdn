@@ -13,10 +13,8 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 
-# faca o import de nossa classe abstrata do Ryu
-from ryu_abstract import RyuAbstractApp
 
-class L2Switch(RyuAbstractApp):
+class L2Switch(app_manager.RyuApp):
     # versoes do OpenFlow suportadas pelo Controller
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 

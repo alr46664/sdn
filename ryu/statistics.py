@@ -1,8 +1,5 @@
 #!/usr/bin/ryu-manager
 
-# classe abstract
-import abc
-
 # pacote do APP principal Ryu
 from ryu.base import app_manager
 # pacotes que gerenciam os eventos
@@ -30,9 +27,7 @@ def _convert_ofp_versions(x):
         return '1.5'
     return '???'
 
-class RyuAbstractApp(app_manager.RyuApp):
-    # torne esta classe abstrata
-    __metaclass__ = abc.ABCMeta
+class Statistics(app_manager.RyuApp):
 
     # versoes do OpenFlow suportadas pelo Controller
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
@@ -61,12 +56,13 @@ class RyuAbstractApp(app_manager.RyuApp):
             -------------------------------------
             |                                   |
             |    Switch OpenFlow - Conectado    |
+            |           ID: %16d|
             |                                   |
             |    Versao OFP (Negociada):        |
             |    %s         |
             |                                   |
             -------------------------------------
-            ''' % ( version.center(22, ' ') ))
+            ''' % ( dp.id, version.center(22, ' ') ))
             # envie solicitacao para obtencao de detalhes do switch
             req = ofp_parser.OFPDescStatsRequest(dp, 0)
             dp.send_msg(req)
@@ -102,7 +98,11 @@ class RyuAbstractApp(app_manager.RyuApp):
         ofp = msg.datapath.ofproto
         # chame o handler
         for body in ev.msg.body:
-            self.aggregate_stats_handler(body=body)
+            for stat in body:
+                print('''
+                    AggregateStats:
+                    \tpacket_count: %d  byte_count: %d  flow_count: %d''' % (
+                    stat.packet_count, stat.byte_count, stat.flow_count ))
 
     # handler da resposta da solicitacao de status agregado
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
@@ -111,45 +111,6 @@ class RyuAbstractApp(app_manager.RyuApp):
         ofp = msg.datapath.ofproto
         body = ev.msg.body
         # chame o handler
-        self.flow_stats_handler(body)
-
-    # handler do table stats
-    @set_ev_cls(ofp_event.EventOFPTableStatsReply, MAIN_DISPATCHER)
-    def _table_stats_reply_handler(self, ev):
-        msg = ev.msg
-        ofp = msg.datapath.ofproto
-        body = ev.msg.body
-        # chame o handler
-        self.table_stats_handler(body)
-
-    # handler do port stats
-    @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
-    def _port_stats_reply_handler(self, ev):
-        msg = ev.msg
-        ofp = msg.datapath.ofproto
-        body = ev.msg.body
-        # chame o handler
-        self.port_stats_handler(body)
-
-    # handler do queue stats
-    @set_ev_cls(ofp_event.EventOFPQueueStatsReply, MAIN_DISPATCHER)
-    def _queue_stats_reply_handler(self, ev):
-        msg = ev.msg
-        ofp = msg.datapath.ofproto
-        body = ev.msg.body
-        # chame o handler
-        self.queue_stats_handler(body)
-
-    # metodo que ira implementar o handler do aggregate stats (pode ser re-implementado nas subclasses)
-    def aggregate_stats_handler(self, body):
-        for stat in body:
-            print('''
-                AggregateStats:
-                \tpacket_count: %d  byte_count: %d  flow_count: %d''' % (
-                stat.packet_count, stat.byte_count, stat.flow_count ))
-
-    # metodo que ira implementar o handler (pode ser re-implementado nas subclasses)
-    def flow_stats_handler(self, body):
         flows = []
         for stat in body:
             flows.append('table_id=%s  match=%s  '
@@ -168,8 +129,13 @@ class RyuAbstractApp(app_manager.RyuApp):
             FlowStats:
             %s''' % flows)
 
-    # metodo que ira implementar o handler (pode ser re-implementado nas subclasses)
-    def table_stats_handler(self, body):
+    # handler do table stats
+    @set_ev_cls(ofp_event.EventOFPTableStatsReply, MAIN_DISPATCHER)
+    def _table_stats_reply_handler(self, ev):
+        msg = ev.msg
+        ofp = msg.datapath.ofproto
+        body = ev.msg.body
+        # chame o handler
         tables = []
         for stat in body:
             tables.append('table_id=%d  name=%s  wildcards=0x%02x  '
@@ -182,8 +148,13 @@ class RyuAbstractApp(app_manager.RyuApp):
             TableStats:
             %s''' % tables)
 
-    # metodo que ira implementar o handler (pode ser re-implementado nas subclasses)
-    def port_stats_handler(self, body):
+    # handler do port stats
+    @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
+    def _port_stats_reply_handler(self, ev):
+        msg = ev.msg
+        ofp = msg.datapath.ofproto
+        body = ev.msg.body
+        # chame o handler
         ports = []
         for stat in body:
             ports.append('port_no=%d  '
@@ -204,8 +175,13 @@ class RyuAbstractApp(app_manager.RyuApp):
             PortStats:
             %s''' % ports)
 
-    # metodo que ira implementar o handler (pode ser re-implementado nas subclasses)
-    def queue_stats_handler(self, body):
+    # handler do queue stats
+    @set_ev_cls(ofp_event.EventOFPQueueStatsReply, MAIN_DISPATCHER)
+    def _queue_stats_reply_handler(self, ev):
+        msg = ev.msg
+        ofp = msg.datapath.ofproto
+        body = ev.msg.body
+        # chame o handler
         queues = []
         for stat in body:
             queues.append('port_no=%d  queue_id=%d  '
@@ -251,15 +227,3 @@ class RyuAbstractApp(app_manager.RyuApp):
         ofp_parser = dp.ofproto_parser
         req = ofp_parser.OFPQueueStatsRequest(dp, 0, port, ofp.OFPQ_ALL)
         dp.send_msg(req)
-
-    # permite que adicionemos um flow ao OFP switch
-    def add_flow(self, dp, match, actions):
-        ofp = dp.ofproto
-        ofp_parser = dp.ofproto_parser
-
-        mod = ofp_parser.OFPFlowMod(
-            datapath=dp, match=match, cookie=0,
-            command=ofp.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
-            priority=ofp.OFP_DEFAULT_PRIORITY,
-            actions=actions)
-        dp.send_msg(mod)
