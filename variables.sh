@@ -15,3 +15,6 @@ NET_NETMASK=255.255.255.0
 
 # pasta de logs
 LOGS_PATH=logs
+
+# apps do ryu
+RYU_APPS='l2switch.py statistics.py'

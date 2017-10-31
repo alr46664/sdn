@@ -1,5 +1,7 @@
 #!/usr/bin/ryu-manager
 
+from datetime import datetime
+
 # pacote do APP principal Ryu
 from ryu.base import app_manager
 # pacotes que gerenciam os eventos
@@ -12,6 +14,8 @@ from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+
+from classes import RepeatedTimer
 
  # funcao que converte das versoes OFP do RYU para as versoes reais
 def _convert_ofp_versions(x):
@@ -29,12 +33,18 @@ def _convert_ofp_versions(x):
 
 class Statistics(app_manager.RyuApp):
 
+    # intervalo entre solicitacoes de estatisticas (em sec)
+    STAT_INTERVAL = 15*60
+
     # versoes do OpenFlow suportadas pelo Controller
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     # inicializicacao do controller
     def __init__(self, *args, **kwargs):
-        super(RyuAbstractApp, self).__init__(*args, **kwargs)
+        super(Statistics, self).__init__(*args, **kwargs)
+        # hash table dos switches conectados
+
+        self.dps = {}
         supported_versions = map(_convert_ofp_versions, self.OFP_VERSIONS)
         print('''
 
@@ -45,28 +55,55 @@ class Statistics(app_manager.RyuApp):
 
             ''' % ( supported_versions.__str__().center(22, ' ') ))
 
+    # este metodo sera chamado periodicamente (a cada STAT_INTERVAL secs)
+    # de modo assincrono e em um thread a parte desse
+    # para coletar as estatisticas do OpenFlow
+    def get_stats(self, dp):
+        curr_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        print("\n\n\t---------- Request Statistics ----------- \n")
+        print("\t            %s" %( curr_time ))
+        self.get_aggregate_stats(dp)
+        self.get_flow_stats(dp)
+        # self.get_table_stats(dp)
+        self.get_port_stats(dp)
+        self.get_queue_stats(dp)
+
+    # este metodo e chamado quando a classe e destruida
+    def close(self):
+        # pare todos os timers!
+        for _, timer in self.dps.values():
+            timer.stop()
+        print("\n\tStatistics - STOPPED\n")
+
     # esta funcao gerencia a conexao / desconexao do switch OF
     @set_ev_cls(dpset.EventDP, MAIN_DISPATCHER)
     def _switch_conn_handler(self, event_dp):
         dp = event_dp.dp
         ofp_parser = dp.ofproto_parser
+        dp_id = dp.id
         if event_dp.enter:
+            self.dps[dp_id] = (dp, RepeatedTimer(Statistics.STAT_INTERVAL, self.get_stats, dp) )
             version = _convert_ofp_versions(dp.ofproto.OFP_VERSION)
+            switch_id = "ID: " + str(dp_id)
             print('''
             -------------------------------------
             |                                   |
             |    Switch OpenFlow - Conectado    |
-            |           ID: %16d|
+            |    %s         |
             |                                   |
             |    Versao OFP (Negociada):        |
             |    %s         |
             |                                   |
             -------------------------------------
-            ''' % ( dp.id, version.center(22, ' ') ))
+            ''' % ( switch_id.center(22, ' '), version.center(22, ' ') ))
             # envie solicitacao para obtencao de detalhes do switch
             req = ofp_parser.OFPDescStatsRequest(dp, 0)
             dp.send_msg(req)
         else:
+            # pare os timers quando o switch for desconectado
+            if dp_id in self.dps:
+                _, timer = self.dps.pop(dp_id)
+                timer.stop()
             print('''
                 ------------------------------------
                 |                                  |
@@ -89,121 +126,148 @@ class Statistics(app_manager.RyuApp):
             SN:            %s
             Manufacturer:  %s
             HW / SW:       %s %s
-            ''' % ( body.serial_num, body.mfr_desc, body.hw_desc, body.sw_desc) )
+            ''' % (
+                body.serial_num, body.mfr_desc,
+                body.hw_desc, body.sw_desc ))
 
     # handler da resposta da solicitacao de status agregado
     @set_ev_cls(ofp_event.EventOFPAggregateStatsReply, MAIN_DISPATCHER)
     def _aggregate_stats_reply_handler(self, ev):
         msg = ev.msg
-        ofp = msg.datapath.ofproto
+        dp  = msg.datapath
+        ofp = dp.ofproto
         # chame o handler
-        for body in ev.msg.body:
-            for stat in body:
-                print('''
-                    AggregateStats:
-                    \tpacket_count: %d  byte_count: %d  flow_count: %d''' % (
-                    stat.packet_count, stat.byte_count, stat.flow_count ))
+        # for body in ev.msg.body:
+        for stat in ev.msg.body:
+            print('''
+            Aggregate Stats ( Datapath: %d ):
+            \tpacket_count: %d
+            \tbyte_count:   %d
+            \tflow_count:   %d \n''' % (
+                dp.id, stat.packet_count, stat.byte_count, stat.flow_count ))
 
     # handler da resposta da solicitacao de status agregado
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def _flow_stats_reply_handler(self, ev):
         msg = ev.msg
-        ofp = msg.datapath.ofproto
-        body = ev.msg.body
+        dp  = msg.datapath
+        ofp = dp.ofproto
         # chame o handler
-        flows = []
-        for stat in body:
-            flows.append('table_id=%s  match=%s  '
-                         'duration_sec=%d  duration_nsec=%d  '
-                         'priority=%d  '
-                         'idle_timeout=%d  hard_timeout=%d  '
-                         'cookie=%d  packet_count=%d  byte_count=%d  '
-                         'actions=%s \n' %
-                         (stat.table_id,
-                          stat.duration_sec, stat.duration_nsec,
-                          stat.priority,
-                          stat.idle_timeout, stat.hard_timeout,
-                          stat.cookie, stat.packet_count, stat.byte_count,
-                          stat.match, stat.actions))
         print('''
-            FlowStats:
-            %s''' % flows)
+            Flow Stats ( Datapath: %d ):''' %(dp.id) )
+        for stat in msg.body:
+            print('''
+            \ttable_id:      %s
+            \tmatch:         %s
+            \tduration_sec:  %d
+            \tduration_nsec: %d
+            \tcookie:        %d
+            \tpriority:      %d
+            \tidle_timeout:  %d
+            \thard_timeout:  %d
+            \tpacket_count:  %d
+            \tbyte_count:    %d
+            \tactions:       %s \n ''' % (
+                  stat.table_id, stat.match,
+                  stat.duration_sec, stat.duration_nsec,
+                  stat.cookie, stat.priority,
+                  stat.idle_timeout, stat.hard_timeout,
+                  stat.packet_count, stat.byte_count,
+                  stat.actions ))
 
     # handler do table stats
     @set_ev_cls(ofp_event.EventOFPTableStatsReply, MAIN_DISPATCHER)
     def _table_stats_reply_handler(self, ev):
         msg = ev.msg
-        ofp = msg.datapath.ofproto
-        body = ev.msg.body
+        dp = msg.datapath
+        ofp = dp.ofproto
         # chame o handler
-        tables = []
-        for stat in body:
-            tables.append('table_id=%d  name=%s  wildcards=0x%02x  '
-                          'max_entries=%d  active_count=%d  '
-                          'lookup_count=%d  matched_count=%d \n' %
-                          (stat.table_id, stat.name, stat.wildcards,
-                           stat.max_entries, stat.active_count,
-                           stat.lookup_count, stat.matched_count))
         print('''
-            TableStats:
-            %s''' % tables)
+            Table Stats ( Datapath: %d ):''' %(dp.id) )
+        for stat in msg.body:
+            print('''
+            \ttable_id:      %d      name:          %s
+            \twildcards:     0x%02x     max_entries:   %d
+            \tactive_count:  %d      lookup_count:  %d
+            \tmatched_count: %d \n ''' % (
+               stat.table_id, stat.name, stat.wildcards,
+               stat.max_entries, stat.active_count,
+               stat.lookup_count, stat.matched_count ))
+
 
     # handler do port stats
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         msg = ev.msg
-        ofp = msg.datapath.ofproto
-        body = ev.msg.body
+        dp = msg.datapath
+        ofp = dp.ofproto
         # chame o handler
-        ports = []
-        for stat in body:
-            ports.append('port_no=%d  '
-                         'rx_packets=%d  tx_packets=%d '
-                         'rx_bytes=%d  tx_bytes=%d '
-                         'rx_dropped=%d  tx_dropped=%d '
-                         'rx_errors=%d  tx_errors=%d '
-                         'rx_frame_err=%d  rx_over_err=%d  rx_crc_err=%d '
-                         'collisions=%d \n' %
-                         (stat.port_no,
-                          stat.rx_packets, stat.tx_packets,
-                          stat.rx_bytes, stat.tx_bytes,
-                          stat.rx_dropped, stat.tx_dropped,
-                          stat.rx_errors, stat.tx_errors,
-                          stat.rx_frame_err, stat.rx_over_err,
-                          stat.rx_crc_err, stat.collisions))
         print('''
-            PortStats:
-            %s''' % ports)
+            Port Stats ( Datapath: %d ):''' %(dp.id) )
+        for stat in msg.body:
+            print('''
+            \t   port_no:   %d  collisions: %d
+            \t--------------------------------
+            \t     RX:                TX:
+            \trx_packets:   %d   tx_packets: %d
+            \trx_bytes:     %d   tx_bytes:   %d
+            \trx_dropped:   %d   tx_dropped: %d
+            \trx_errors:    %d   tx_errors:  %d
+            \t    ______
+            \t     ERR:
+            \trx_frame_err: %d
+            \trx_over_err:  %d
+            \trx_crc_err:   %d \n''' % (
+                stat.port_no, stat.collisions,
+                stat.rx_packets, stat.tx_packets,
+                stat.rx_bytes, stat.tx_bytes,
+                stat.rx_dropped, stat.tx_dropped,
+                stat.rx_errors, stat.tx_errors,
+                stat.rx_frame_err, stat.rx_over_err,
+                stat.rx_crc_err ) )
+
 
     # handler do queue stats
     @set_ev_cls(ofp_event.EventOFPQueueStatsReply, MAIN_DISPATCHER)
     def _queue_stats_reply_handler(self, ev):
         msg = ev.msg
-        ofp = msg.datapath.ofproto
-        body = ev.msg.body
+        dp = msg.datapath
+        ofp = dp.ofproto
         # chame o handler
-        queues = []
-        for stat in body:
-            queues.append('port_no=%d  queue_id=%d  '
-                          'tx_bytes=%d  tx_packets=%d  tx_errors=%d  \n' %
-                          (stat.port_no, stat.queue_id,
-                           stat.tx_bytes, stat.tx_packets, stat.tx_errors))
         print('''
-            QueueStats:
-            %s''' % queues)
+            Queue Stats ( Datapath: %d ):''' %(dp.id) )
+        for stat in msg.body:
+            print('''
+            \tport_no:    %d
+            \tqueue_id:   %d
+            \ttx_bytes:   %d
+            \ttx_packets: %d
+            \ttx_errors:  %d  \n''' % (
+                stat.port_no, stat.queue_id,
+                stat.tx_bytes, stat.tx_packets, stat.tx_errors ))
+
 
     # envie solicitacao de status agregado do switch
-    def get_aggregate_stats(self, dp, match):
+    def get_aggregate_stats(self, dp, match=None):
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
+
+        # in_port=ofp.OFPP_ALL
+        if match == None:
+            match = ofp_parser.OFPMatch()
+
         req = ofp_parser.OFPAggregateStatsRequest(
             dp, 0, match, 0xff, ofp.OFPP_NONE)
         dp.send_msg(req)
 
     # pegue stats de um unico flow
-    def get_flow_stats(self, dp, match):
+    def get_flow_stats(self, dp, match=None):
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
+
+        if match == None:
+            match = ofp_parser.OFPMatch()
+
         req = ofp_parser.OFPFlowStatsRequest(
             dp, 0, match, 0xff, ofp.OFPP_NONE)
         dp.send_msg(req)
@@ -215,15 +279,23 @@ class Statistics(app_manager.RyuApp):
         dp.send_msg(req)
 
     # pegue stats da port
-    def get_port_stats(self, dp, port):
+    def get_port_stats(self, dp, port=None):
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
+
+        if port == None:
+            port = ofp.OFPP_LOCAL
+
         req = ofp_parser.OFPPortStatsRequest(dp, 0, port)
         dp.send_msg(req)
 
     # pegue stats da queue
-    def get_queue_stats(self, dp, port):
+    def get_queue_stats(self, dp, port=None):
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
+
+        if port == None:
+            port = ofp.OFPP_LOCAL
+
         req = ofp_parser.OFPQueueStatsRequest(dp, 0, port, ofp.OFPQ_ALL)
         dp.send_msg(req)

@@ -1,11 +1,8 @@
 from threading import Timer, Lock
 
-from time import sleep, time
-import random
-
 class RepeatedTimer(object):
     def __init__(self, interval, function, *args, **kwargs):
-        self._timer     = None
+        self._timers    = []
         self.interval   = interval
         self.function   = function
         self.args       = args
@@ -17,24 +14,15 @@ class RepeatedTimer(object):
         self.lock.acquire()
         self.start()
         self.function(*self.args, **self.kwargs)
+        self._timers.pop(0)
         self.lock.release()
 
     def start(self):
-        self._timer = Timer(self.interval, self._run)
-        # self._timer.daemon = True
-        self._timer.start()
+        self._timers.append(Timer(self.interval, self._run))
+        self._timers[-1].start()
 
     def stop(self):
-        if self._timer != None:
-            self._timer.cancel()
-
-def print_ok():
-    s = random.random()*10
-    print("Sleeping %.4f sec ..." % s)
-    sleep(s)
-    print("OK  -  time %s" %( time() ) )
-
-try:
-    r = RepeatedTimer(1, print_ok)
-except(KeyboardInterrupt, SystemExit):
-    r.stop()
+        for timer in self._timers:
+            timer.cancel()
+        for timer in self._timers:
+            timer.join()

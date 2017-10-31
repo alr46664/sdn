@@ -16,8 +16,8 @@ from ryu.lib.packet import icmp
 from ryu.lib.packet import ether_types
 
 # imports do usuario
-from ryu_abstract import Flow
-from ryu_abstract import Packet
+from classes import Flow
+from classes import Packet
 
 class L2Switch(app_manager.RyuApp):
 
@@ -28,6 +28,9 @@ class L2Switch(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(L2Switch, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
+
+    def close(self):
+        print("\n\tL2Switch - STOPPED\n")
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
