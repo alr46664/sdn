@@ -45,17 +45,10 @@ class L2Switch(app_manager.RyuApp):
             self.mac_to_port[dp_id] = {}
             mac_to_port = self.mac_to_port[dp_id]
             # sempre que receber um pacote direcionado pra uma das portas
-            # do switch, redirecione para Network Stack interno (Linux Bridge)
+            # do switc, redirecione para Network Stack interno (OVS Bridge)
             # do roteador
             for port in ev.ports:
                 mac_to_port[port.hw_addr] = ofp.OFPP_LOCAL
-                # se recebermos um pacote com endereco para placa de rede, reenvie ele
-                # pela mesma placa
-                #if (port.name[0:4] == 'wlan'):
-                #    mac_to_port[port.hw_addr] = port.port_no
-                #    print('wlan recv')
-                #print(port.hw_addr)
-                #print(port.port_no)
         else:
             # delete tabela de macs da memoria
             print('''Switch \"%d\" Desconectado, destruindo tabela de macs ...''' % (dp_id))
