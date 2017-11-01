@@ -124,11 +124,11 @@ case $OPTION in
         ;;
     $OPTION_WIRESHARK)
         check_netns
-        kdesu ip netns exec "$NAMESPACE" wireshark
+        kdesu ip netns exec "$NAMESPACE" wireshark &
         ;;
     $OPTION_FIREFOX)
         check_netns
-        kdesu ip netns exec "$NAMESPACE" firefox
+        kdesu ip netns exec "$NAMESPACE" firefox &
         ;;
     $OPTION_TERMINAL)
         check_netns

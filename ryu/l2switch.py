@@ -32,6 +32,36 @@ class L2Switch(app_manager.RyuApp):
     def close(self):
         print("\n\tL2Switch - STOPPED\n")
 
+    # esta funcao gerencia a conexao / desconexao do switch OF
+    @set_ev_cls(dpset.EventDP, MAIN_DISPATCHER)
+    def _switch_conn_handler(self, ev):
+        dp = ev.dp
+        ofp = dp.ofproto
+        ofp_parser = dp.ofproto_parser
+        dp_id = dp.id
+        if ev.enter:
+            # crie uma tabela de macs
+            print('''Conexao com Switch \"%d\", criando tabela de macs ...''' % (dp_id))
+            self.mac_to_port[dp_id] = {}
+            mac_to_port = self.mac_to_port[dp_id]
+            # sempre que receber um pacote direcionado pra uma das portas
+            # do switch, redirecione para Network Stack interno (Linux Bridge)
+            # do roteador
+            for port in ev.ports:
+                mac_to_port[port.hw_addr] = ofp.OFPP_LOCAL
+                # se recebermos um pacote com endereco para placa de rede, reenvie ele
+                # pela mesma placa
+                #if (port.name[0:4] == 'wlan'):
+                #    mac_to_port[port.hw_addr] = port.port_no
+                #    print('wlan recv')
+                #print(port.hw_addr)
+                #print(port.port_no)
+        else:
+            # delete tabela de macs da memoria
+            print('''Switch \"%d\" Desconectado, destruindo tabela de macs ...''' % (dp_id))
+            del self.mac_to_port[dp_id]
+
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
         msg = ev.msg
@@ -55,28 +85,42 @@ class L2Switch(app_manager.RyuApp):
         else:
             reason_txt = 'unknown'
 
+        # pegue a tabela mac deste switch (datapath)
+        mac_to_port = self.mac_to_port[dp.id]
+
         out_port = ofp.OFPP_FLOOD
 
         # BEGIN - modificacoes do switch em relacao ao hub
 
         pkt = packet.Packet(data)
-        eth = pkt.get_protocols(ethernet.ethernet)[0]
-
-        print("   PKT IN (EVENT)\n\tID:  %s - Reason:  %s\n\tPkt:  %s\n" % (buffer_id, reason_txt, pkt) )
+        eth = pkt.get_protocol(ethernet.ethernet)
+        arp_pkt = pkt.get_protocol(arp.arp)
 
         # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port[eth.src] = in_port
+        mac_to_port[eth.src] = in_port
 
-        if eth.dst in self.mac_to_port:
+        # ignore non arp packets, that we dont know the MAC address
+        if (eth.dst != 'ff:ff:ff:ff:ff:ff') and (eth.dst not in mac_to_port) and (not arp_pkt):
+            return
+
+        # debugging
+        print('''\n\n\t------------ PKT IN ( datapath: %d) ------------''' % (dp.id))
+        print('''\t       Buffer_ID:  %s      Reason:  %s''' % (buffer_id, reason_txt ))
+        print('''\t       In_Port:  %s''' % (in_port ))
+        print('''\t       Pkt:  ''' )
+        for p in pkt:
+            print('''\t             %s'''  %( repr(p) ))
+
+        if eth.dst in mac_to_port:
             # set the proper out port to avoid flooding
-            out_port = self.mac_to_port[eth.dst]
+            out_port = mac_to_port[eth.dst]
 
         # define the aciton the switch will take
         actions = [ofp_parser.OFPActionOutput(out_port)]
 
         if out_port != ofp.OFPP_FLOOD:
             # install a flow to avoid packet_in next time
-            print("   add flow  -  dst:  %s  - out:  %s\n" % (eth.dst, out_port) )
+            print("\n   add flow  -  dst:  %s  - out:  %s\n" % (eth.dst, out_port) )
             match = ofp_parser.OFPMatch(dl_dst=haddr_to_bin(eth.dst))
             flow = Flow(dp, match, actions )
             flow.add()

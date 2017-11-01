@@ -18,3 +18,4 @@ LOGS_PATH=logs
 
 # apps do ryu
 RYU_APPS='l2switch.py statistics.py'
+RYU_OPTION_NOLOG=-l

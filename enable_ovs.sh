@@ -11,6 +11,12 @@ CONTROLLER="tcp:$CTRL_IP:6633"
 BRIDGE_IFACE=$INTERFACE_OVS
 BRIDGE_ADDR='00:00:aa:bb:cc:dd'
 
+# limpe o banco de dados
+/etc/init.d/openvswitch stop
+rm -rf /etc/openvswitch/conf.db
+/etc/init.d/openvswitch start
+/etc/init.d/network restart
+
 # configure a bridge e os protocolos do OpenFlow
 ovs-vsctl add-br "$BRIDGE_IFACE"
 ovs-vsctl set bridge "$BRIDGE_IFACE" other-config:hwaddr="$BRIDGE_ADDR"
@@ -35,5 +41,5 @@ ovs-vsctl add-port "$BRIDGE_IFACE" eth0.1
 ovs-vsctl add-port "$BRIDGE_IFACE" eth0.3
 ovs-vsctl add-port "$BRIDGE_IFACE" eth0.4
 ovs-vsctl add-port "$BRIDGE_IFACE" eth0.5
-ovs-vsctl add-port "$BRIDGE_IFACE" br-wlan0
-ovs-vsctl add-port "$BRIDGE_IFACE" br-wlan1
+ovs-vsctl add-port "$BRIDGE_IFACE" wlan0
+ovs-vsctl add-port "$BRIDGE_IFACE" wlan1
