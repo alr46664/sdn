@@ -41,17 +41,23 @@ class L2Switch(app_manager.RyuApp):
         dp_id = dp.id
         if ev.enter:
             # crie uma tabela de macs
-            print('''Conexao com Switch \"%d\", criando tabela de macs ...''' % (dp_id))
+            print('''\nConexao com Switch \"%d\", criando tabela de macs ...\n''' % (dp_id))
             self.mac_to_port[dp_id] = {}
             mac_to_port = self.mac_to_port[dp_id]
             # sempre que receber um pacote direcionado pra uma das portas
             # do switc, redirecione para Network Stack interno (OVS Bridge)
             # do roteador
             for port in ev.ports:
+                # TODO:
+                # isto resolve a questao do wifi, porem quando o mesmo host desconecta
+                # da rede 2g e conecta na rede 5g, o roteador nao responde a solicitacao
+                # do DHCP, pois ele acredita que o host nao havia se desconectado da rede ainda.
+                # Dessa forma, um flood arp do servidor DHCP que impede que o host obtenha
+                # o novo IP do servidor
                 mac_to_port[port.hw_addr] = ofp.OFPP_LOCAL
         else:
             # delete tabela de macs da memoria
-            print('''Switch \"%d\" Desconectado, destruindo tabela de macs ...''' % (dp_id))
+            print('''\nSwitch \"%d\" Desconectado, destruindo tabela de macs ...\n''' % (dp_id))
             del self.mac_to_port[dp_id]
 
 
@@ -65,9 +71,9 @@ class L2Switch(app_manager.RyuApp):
         # leia a mensagem do packet_in
         buffer_id = msg.buffer_id
         total_len = msg.total_len
-        in_port = msg.in_port
-        reason = msg.reason
-        data = msg.data
+        in_port   = msg.in_port
+        reason    = msg.reason
+        data      = msg.data
 
         if reason == ofp.OFPR_NO_MATCH:
             reason_txt = 'NO MATCH'
@@ -92,7 +98,9 @@ class L2Switch(app_manager.RyuApp):
         # learn a mac address to avoid FLOOD next time.
         mac_to_port[eth.src] = in_port
 
-        # ignore non arp packets, that we dont know the MAC address
+        # ignore broadcast requests (we have a non-expiring flow in the router to
+        # automatically flood the net)
+        # if we dont know the MAC address, drop the packet
         if (eth.dst != 'ff:ff:ff:ff:ff:ff') and (eth.dst not in mac_to_port) and (not arp_pkt):
             return
 
