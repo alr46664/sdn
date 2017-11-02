@@ -8,7 +8,6 @@ from ryu.controller.handler import set_ev_cls, MAIN_DISPATCHER
 # pacotes que gerenciam os protocolos OpenFlow (1.0 - 1.5)
 from ryu.ofproto import ofproto_v1_0, ofproto_v1_2, ofproto_v1_3, ofproto_v1_4, ofproto_v1_5
 # gerencimento de pacotes
-from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import arp
@@ -17,7 +16,7 @@ from ryu.lib.packet import ether_types
 
 # imports do usuario
 from classes import Flow
-from classes import Packet
+from classes import PacketManager
 
 class L2Switch(app_manager.RyuApp):
 
@@ -28,9 +27,48 @@ class L2Switch(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(L2Switch, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
+        # definicao das prioridades dos flows
+        self.flow_priorities = {
+            'default': 0 ,
+            'flood':   1 ,
+            'arp':     2
+        }
 
+    # rotina executado quando o controller para
     def close(self):
         print("\n\tL2Switch - STOPPED\n")
+
+    # adiciona um flow ao roteador
+    def _add_flow(self, dp, dst, port, priority=None):
+        ofp = dp.ofproto
+        ofp_parser = dp.ofproto_parser
+        # install a flow to avoid packet_in next time
+        print("\n   add flow  -  dst:  %s  - out:  %s" % (dst, port) )
+        match = ofp_parser.OFPMatch(dl_dst=dst)
+        actions = [ofp_parser.OFPActionOutput(port)]
+        Flow(dp, match, actions, priority=priority).add()
+
+    # rotina que adiciona os flows default aos roteadores
+    def _add_default_flows(self, dp):
+        ofp = dp.ofproto
+        ofp_parser = dp.ofproto_parser
+        # permita que o controller sempre receba pacotes ARP (e aprenda
+        # o eth.src deles)
+        priority = ofp.OFP_DEFAULT_PRIORITY + self.flow_priorities['arp']
+        action = [ ofp_parser.OFPActionOutput( ofp.OFPP_CONTROLLER ) ]
+        match = ofp_parser.OFPMatch(dl_type=ether_types.ETH_TYPE_ARP)
+        Flow(dp, match, action, priority=priority).add()
+        # permita que os pedidos de flood sejam direcionados automaticamente
+        priority = ofp.OFP_DEFAULT_PRIORITY + self.flow_priorities['flood']
+        action = [ ofp_parser.OFPActionOutput( ofp.OFPP_FLOOD ) ]
+        match = ofp_parser.OFPMatch(dl_dst='ff:ff:ff:ff:ff:ff')
+        Flow(dp, match, action, priority=priority).add()
+        # leia o mapa de macs e faca o add flow do mapa
+        priority = ofp.OFP_DEFAULT_PRIORITY + self.flow_priorities['default']
+        mac_to_port = self.mac_to_port[dp.id]
+        for hw in mac_to_port:
+            port = mac_to_port[hw]
+            self._add_flow(dp, hw, port, priority=priority)
 
     # esta funcao gerencia a conexao / desconexao do switch OF
     @set_ev_cls(dpset.EventDP, MAIN_DISPATCHER)
@@ -38,31 +76,27 @@ class L2Switch(app_manager.RyuApp):
         dp = ev.dp
         ofp = dp.ofproto
         ofp_parser = dp.ofproto_parser
-        dp_id = dp.id
         if ev.enter:
             # crie uma tabela de macs
-            print('''\nConexao com Switch \"%d\", criando tabela de macs ...\n''' % (dp_id))
-            self.mac_to_port[dp_id] = {}
-            mac_to_port = self.mac_to_port[dp_id]
+            print('''\nSwitch \"%d\"  -  Criando tabela de macs ...\n''' % (dp.id))
+            self.mac_to_port[dp.id] = {}
+            mac_to_port = self.mac_to_port[dp.id]
             # sempre que receber um pacote direcionado pra uma das portas
-            # do switc, redirecione para Network Stack interno (OVS Bridge)
+            # do switch, redirecione para Network Stack interno (OVS Bridge)
             # do roteador
             for port in ev.ports:
-                # TODO:
-                # isto resolve a questao do wifi, porem quando o mesmo host desconecta
-                # da rede 2g e conecta na rede 5g, o roteador nao responde a solicitacao
-                # do DHCP, pois ele acredita que o host nao havia se desconectado da rede ainda.
-                # Dessa forma, um flood arp do servidor DHCP que impede que o host obtenha
-                # o novo IP do servidor
-                mac_to_port[port.hw_addr] = ofp.OFPP_LOCAL
+                if port.port_no != ofp.OFPP_LOCAL:
+                    mac_to_port[port.hw_addr] = ofp.OFPP_LOCAL
+            # adicione as flows default do switch
+            self._add_default_flows(dp)
         else:
             # delete tabela de macs da memoria
-            print('''\nSwitch \"%d\" Desconectado, destruindo tabela de macs ...\n''' % (dp_id))
-            del self.mac_to_port[dp_id]
+            print('''\nSwitch \"%d\"  -  Destruindo tabela de macs ...\n''' % (dp.id))
+            del self.mac_to_port[dp.id]
 
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def packet_in_handler(self, ev):
+    def _packet_in_handler(self, ev):
         msg = ev.msg
         dp = msg.datapath
         ofp = dp.ofproto
@@ -87,45 +121,37 @@ class L2Switch(app_manager.RyuApp):
         # pegue a tabela mac deste switch (datapath)
         mac_to_port = self.mac_to_port[dp.id]
 
-        out_port = ofp.OFPP_FLOOD
-
         # BEGIN - modificacoes do switch em relacao ao hub
 
-        pkt = packet.Packet(data)
+        pkt = PacketManager(data)
         eth = pkt.get_protocol(ethernet.ethernet)
         arp_pkt = pkt.get_protocol(arp.arp)
 
-        # learn a mac address to avoid FLOOD next time.
-        mac_to_port[eth.src] = in_port
+        # learn mac address to avoid FLOOD
+        if eth.src not in mac_to_port:
+            mac_to_port[eth.src] = in_port
+            print("\n\tPACKET Received  -  Learning MAC ...")
+            self._add_flow(dp, eth.src, in_port, priority=self.flow_priorities['default'])
 
-        # ignore broadcast requests (we have a non-expiring flow in the router to
-        # automatically flood the net)
-        # if we dont know the MAC address, drop the packet
-        if (eth.dst != 'ff:ff:ff:ff:ff:ff') and (eth.dst not in mac_to_port) and (not arp_pkt):
+        # find out the output port
+        out_port = ofp.OFPP_FLOOD
+        if eth.dst in mac_to_port:
+            # set the proper out port to avoid flooding
+            out_port = mac_to_port[eth.dst]
+        elif eth.dst != 'ff:ff:ff:ff:ff:ff':
+            # nothing to do, we dont have a instruction to proceed
             return
 
         # debugging
         print('''\n\n\t------------ PKT IN ( datapath: %d) ------------''' % (dp.id))
         print('''\t       Buffer_ID:  %s      Reason:  %s''' % (buffer_id, reason_txt ))
         print('''\t       In_Port:  %s''' % (in_port ))
-        print('''\t       Pkt:  ''' )
-        for p in pkt:
-            print('''\t             %s'''  %( repr(p) ))
-
-        if eth.dst in mac_to_port:
-            # set the proper out port to avoid flooding
-            out_port = mac_to_port[eth.dst]
+        print('''\t       %s''' % (str(pkt).replace('\n', '\n\t       ') ))
 
         # define the aciton the switch will take
         actions = [ofp_parser.OFPActionOutput(out_port)]
 
-        if out_port != ofp.OFPP_FLOOD:
-            # install a flow to avoid packet_in next time
-            print("\n   add flow  -  dst:  %s  - out:  %s\n" % (eth.dst, out_port) )
-            match = ofp_parser.OFPMatch(dl_dst=haddr_to_bin(eth.dst))
-            flow = Flow(dp, match, actions )
-            flow.add()
-
         # END - modificacoes do switch em relacao ao hub
 
-        Packet.send(dp=dp, in_port=in_port, actions=actions, data=data)
+        print("\n\tPacket OUT  -  SEND")
+        PacketManager.send(dp=dp, in_port=in_port, actions=actions, data=data)

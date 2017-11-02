@@ -4,6 +4,8 @@
 
 **/*.py[cod]
 
+.mozilla/
+bin/
 .Xauthority
 .bash_history
 .bash_logout
