@@ -3,20 +3,21 @@
 class Flow(object):
     """ gerencia eventos dos Flows """
 
-    def __init__(self, dp, match, actions, buffer_id=None, priority=None, idle_timeout=0, hard_timeout=0):
+    def __init__(self, dp, match, actions, flags=None, cookie=0, priority=None, idle_timeout=0, hard_timeout=0):
         self.dp = dp
         self.ofp = dp.ofproto
         self.ofp_parser = dp.ofproto_parser
 
-        if buffer_id == None:
-            buffer_id = self.ofp.OFP_NO_BUFFER
-
         if priority == None:
             priority = self.ofp.OFP_DEFAULT_PRIORITY
 
+        if flags == None:
+            flags = self.ofp.OFPFF_SEND_FLOW_REM
+
         self.match = match
         self.actions = actions
-        self.buffer_id = buffer_id
+        self.flags = flags
+        self.cookie = cookie
         self.priority = priority
         self.idle_timeout = idle_timeout
         self.hard_timeout = hard_timeout
@@ -25,9 +26,9 @@ class Flow(object):
     def _send(self, command):
         ''' envia Flow Mod pro roteador '''
         mod = self.ofp_parser.OFPFlowMod(
-            datapath=self.dp, match=self.match, command=command,
-            idle_timeout=self.idle_timeout, hard_timeout=self.hard_timeout,
-            buffer_id=self.buffer_id, priority=self.priority, actions=self.actions)
+            datapath=self.dp, command=command, match=self.match,  priority=self.priority,
+            actions=self.actions, idle_timeout=self.idle_timeout, hard_timeout=self.hard_timeout,
+            flags=self.flags, cookie=self.cookie)
         self.dp.send_msg(mod)
 
 
@@ -44,7 +45,7 @@ class Flow(object):
         self._send(command)
 
 
-    def delete(self):
+    def delete(self, strict=False):
         ''' permite que adicionemos um flow ao OFP switch '''
         command = self.ofp.OFPFC_DELETE
         if strict:

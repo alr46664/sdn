@@ -66,7 +66,7 @@ class Statistics(app_manager.RyuApp):
         self.get_flow_stats(dp)
         # self.get_table_stats(dp)
         self.get_port_stats(dp)
-        self.get_queue_stats(dp)
+        # self.get_queue_stats(dp)
 
     # este metodo e chamado quando a classe e destruida
     def close(self):
@@ -245,7 +245,6 @@ class Statistics(app_manager.RyuApp):
             \ttx_errors:  %d  \n''' % (
                 stat.port_no, stat.queue_id,
                 stat.tx_bytes, stat.tx_packets, stat.tx_errors ))
-
 
     # envie solicitacao de status agregado do switch
     def get_aggregate_stats(self, dp, match=None):
